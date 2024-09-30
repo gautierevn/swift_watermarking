@@ -14,7 +14,7 @@ import os
 import json
 from text_zipper import TextZipper
 import io
-from baseline_lossless_scale_watermark import *
+from watermark_dir import *
 import numpy as np
 import pandas as pd
 from scipy.special import betainc, gammaincc
@@ -23,60 +23,58 @@ from scipy.stats import pearsonr
 import json
 import matplotlib.pyplot as plt
 
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-print("-"*60)
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--watermark_encoder_model",
-    type=str,
-    default='/home/gevennou/hidden_models/bzhenc.pth',
-    help="Path to the watermarking encoder model.")
-parser.add_argument(
-    "--watermark_power",
-    type=float,
-    default=1.0,
-    help="Watermark power.")
-parser.add_argument(
-    "--watermark_decoder_model",
-    type=str,
-    default='/home/gevennou/hidden_models/bzhdec.pth',
-    help="Path to the watermarking decoder model.")
-parser.add_argument(
-    '--language_model', '-L',
-    type=str,
-    default="facebook/opt-125m",
-    help='Language model for text compression'
-)
-parser.add_argument(
-    '--key', '-k', type=int, default=42,
-    help='Watermarking key'
-)
-parser.add_argument(
-    '--modulation', '-m', default='cyclicorth',
-    choices = list(sorted(MODULATIONS.keys())),
-    help='Message modulation scheme'
-)
-parser.add_argument(
-    '--image-size', '-s', type=int, default=128,
-    help='Watermark size',
-)
-parser.add_argument(
-    "--adapter_path", type= str,
-    default= "/home/gevennou/clark/scripts/finetuned_model",
-)
-parser.add_argument(
-    "--input_directory", "-i",type= str ,help="Directory containing the images to be watermarked.",
-)
-parser.add_argument(
-    "--output_file","-d", type= str,
-)
-args = parser.parse_args()
-print(args)
-print(f'Loading LLM for text compression from {args.language_model}')
-if args.language_model == "opt-350m" : 
-    args.language_model = "/home/gevennou/.cache/huggingface/hub/models--facebook--opt-350m/snapshots/08ab08cc4b72ff5593870b5d527cf4230323703c"
-tz = TextZipper(modelname = args.language_model,adapter_path=args.adapter_path)
-tz.model.to(device)
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--watermark_encoder_model",
+        type=str,
+        default='/home/gevennou/hidden_models/bzhenc.pth',
+        help="Path to the watermarking encoder model.")
+    parser.add_argument(
+        "--watermark_power",
+        type=float,
+        default=1.0,
+        help="Watermark power.")
+    parser.add_argument(
+        "--watermark_decoder_model",
+        type=str,
+        default='/home/gevennou/hidden_models/bzhdec.pth',
+        help="Path to the watermarking decoder model.")
+    parser.add_argument(
+        '--language_model', '-L',
+        type=str,
+        default="facebook/opt-125m",
+        help='Language model for text compression'
+    )
+    parser.add_argument(
+        '--key', '-k', type=int, default=42,
+        help='Watermarking key'
+    )
+    parser.add_argument(
+        '--modulation', '-m', default='cyclicorth',
+        choices = list(sorted(MODULATIONS.keys())),
+        help='Message modulation scheme'
+    )
+    parser.add_argument(
+        '--image-size', '-s', type=int, default=128,
+        help='Watermark size',
+    )
+    parser.add_argument(
+        "--adapter_path", type= str,
+        default= "models/finetuned_llm",
+    )
+    parser.add_argument(
+        "--output_file","-d", type= str, help="Output file for the results"
+    )
+    parser.add_argument(
+        "--input_directory", "-i",type= str ,help="Directory containing the images to be watermarked.",
+    )
+
+
+    args = parser.parse_args()
+    return args
+
+
 
 def resize_and_pad_to_numpy(img, target=256):
     size = img.size
@@ -233,35 +231,30 @@ def encoding_caption_for_comparison(caption,key=None):
 
 def detect_watermark_in_directory(directory,captions_json=None,coco=False):
     results = {}
-    # the dir architecture is as such: super_dir => sub_dir such as it is named ID => images (9 per ID)
     errors = 0
     pfas = 0
-
+    print(directory)
+    print(os.listdir(directory))
     for root, dirs, files in os.walk(directory):
+        print(root,dirs,files)
         for filename in tqdm(files,total=len(files)):
 
             print(filename)
-            if (filename.endswith(".jpg") or filename.endswith(".png")) and "original" not in filename and "checkpoint" not in filename and "watermarked" in filename:
+            if (filename.endswith(".jpg") or filename.endswith(".png")):
                 image_path = os.path.join(root, filename)
                 if "checkpoint" in filename:
                     continue
                 if coco :
                     ID = filename.replace("_watermarked.jpg",".jpg")
                     key_id = ID.split(".")[0]
+                    k = int(key_id)
                 else :
                     ID = filename.split("_")[0]
-                # print(ID, filename)
-                # print(int(ID))
-                if coco : 
-                    k = int(key_id)
-                    # k=42
-                else :
-                    k = int(ID)
+                    # k = int(ID)
+                    k=42
                 caption_decoded, wr = detect_watermark(image_path,key=k)
+               
                 # Extract the ID from the filename
-                # ID = filename.split("_")[0]
-                # Check if the ID already exists in the results dictionary
-
                 if ID in results:
                     results[ID]["captions"].append(caption_decoded)
                 else:
@@ -309,20 +302,13 @@ def detect_watermark_in_directory(directory,captions_json=None,coco=False):
                 if captions_json is None and "checkpoint" not in filename:
                     try :
                         key_id = filename.split(".")[0]
-                        # w = encoding_caption_for_comparison(caption_decoded,key=int(key_id))
                         rho = computing_rho(wr,key=int(key_id))
-                        # # print(w)
-                        # correlation = wr.dot(w)
-                        # pfa_value = pfa(correlation, 256)
-                        # print(pfa_value)
+
                         if "pfas" in results[ID]:
                             results[ID]["pfas"].append(rho)
                         else:
                             results[ID]["pfas"] = [rho]
-                        # if "correlation" in results[ID]:
-                        #     results[ID]["correlation"].append(correlation)
-                        # else :
-                        #     results[ID]["correlation"] = [correlation]
+
                     except MemoryError: continue
                         # print(f"Caption : {caption} \n Decoded : {caption_decoded} \n Hamming distance : {hamming_distance}")
     return results
@@ -518,8 +504,13 @@ def default_converter(o):
     raise TypeError(f"Object of type {type(o)} is not JSON serializable")
 
 if __name__ == "__main__":
+    args = get_args()
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
- 
+    print(f'Loading LLM for text compression from {args.language_model}')
+    tz = TextZipper(modelname = args.language_model,adapter_path=args.adapter_path)
+    tz.model.to(device)
+
     print(f'Loading watermark decoder from {args.watermark_decoder_model}...')
     watermark_decoder = torch.jit.load(args.watermark_decoder_model).to(device)
     watermark_decoder.eval()
@@ -528,14 +519,12 @@ if __name__ == "__main__":
         transforms.Normalize(mean=[0.5, 0.5, 0.5],std=[0.5, 0.5, 0.5])
     ])
 
-
-    args = parser.parse_args()
     # Specify the directory containing the images
     input_directory = Path(args.input_directory)
     output_file = Path(args.output_file)
 
     # Determine if it's a COCO directory based on the path
-    is_coco = True
+    is_coco = False
     if is_coco:
         captions_source = "/home/gevennou/clark/scripts/coco_val2017_2k_captions.json"
     else :
@@ -549,46 +538,3 @@ if __name__ == "__main__":
         json.dump(results, f, default=default_converter)
 
     print(f"Results saved to {output_file}")
-
-
-
-    # exit()
-    # image_directory = "/home/gevennou/BIG_storage/semantic_watermarking/emu_generated_images_512_10tokens/" #synthetic 40 db
-    # image_directory = "/home/gevennou/BIG_storage/semantic_watermarking/emu_test_set_watermarked_fixed/" #watermarked 1.0 power 40 db
-    # # Call the function to detect watermark in all images in the directory
-    # captions_source = "/home/gevennou/clark/scripts/emu_blip2_captions_test_set_short_captions.json"
-    # # image_directory = "/home/gevennou/BIG_storage/semantic_watermarking/emu_512_10_1.0WP/"
-    # transform_list = ['noise']#,'crop_400','jpeg_compression','grayscale','resize_128','crop_256', 'blur'] #crop is in (256,256) and resize in (256,256) also
-
-    # input_directory = f'/home/gevennou/BIG_storage/semantic_watermarking/emu_test_set_watermarked_fixed/1.0_power/' #"DONE"
-    # # input_directory = "/home/gevennou/BIG_storage/semantic_watermarking/swift/synthetic_edit_imgs_42db/"
-    # # results_final = {}BIG_storage/semantic_watermarking/robustness_hiddenseek_emu_test_set_watermarked_fixed/noise
-    # test_path = "/home/gevennou/BIG_storage/semantic_watermarking/swift/attacked_imgs/resize_128/1013_watermark_pow_1.0.png"
-    
-    # results_final = detect_watermark_in_directory(input_directory, captions_json=captions_source)
-    # # # exit()
-    # exit()
-    # coco_directory = "/home/gevennou/BIG_storage/semantic_watermaking/coco/val2017_2k/"
-    # results_coco = detect_watermark_in_directory(coco_directory,coco=True)
-    # with open("/home/gevennou/BIG_storage/semantic_watermarking/coco_val_2k_nonmarked_keys_changed_clean_H0_fisher.json","w") as f:
-    #     json.dump(results_coco,f ,default=default_converter)
-    # exit()
-    # results_final = {}
-    # for t in transform_list:
-    #     # input_directory = f'/home/gevennou/BIG_storage/semantic_watermarking/emu_test_set_watermarked_fixed/1.0_power/'
-    #     # input_directory = f'/home/gevennou/BIG_storage/semantic_watermarking/swift/attacked_imgs/{t}/'
-    #     input_directory=f'/home/gevennou/BIG_storage/semantic_watermarking/swift/attacked_imgs_42db/{t}'
-        
-    #     json_path = "/home/gevennou/BIG_storage/semantic_watermarking/swift/swift_emu_edit_test_set_benign_attacks_42db.json"
-    #     results_final[t] = detect_watermark_in_directory(input_directory,captions_json=captions_source)
-    #     with open(json_path, 'r') as file:
-    #         data = json.load(file)
-    #     data["noise"] = results_final[t]
-    #     # .update(results_final[t])
-    #     # print(results_final[t])
-    #     # print(data)
-    #     # with open(json_path, "w") as f:
-    #     #     json.dump(results_final[t], f, default=default_converter)
-    #     with open("/home/gevennou/BIG_storage/semantic_watermarking/swift/swift_emu_edit_test_set_synthetic_attack_42db_final.json","w") as f:
-    #         json.dump(results_final,f ,default=default_converter)
- 
