@@ -232,13 +232,13 @@ def watermark_sample(args, caption, image_file, watermark_power):
 def process_dataset(modulation, key, dataset = None, watermark_power = 1.0, dataloader = None,OUTPUT_DIR = "watermarked_images"):
     results_dict = {}
     c=0
-    os.makedirs(f"swift/{OUTPUT_DIR}",exist_ok=True)
+    os.makedirs(f"{OUTPUT_DIR}",exist_ok=True)
     for og_image_file, images in tqdm(dataloader,total=len(dataloader)):
         c+=1 
         caption = dataset[str(og_image_file[0])]
         caption = caption.replace('\n', '').replace('\t', '')
         
-        image_file = f"swift/{OUTPUT_DIR}/{og_image_file[0]}_watermark_pow_{watermark_power}.png"
+        image_file = f"{OUTPUT_DIR}/{og_image_file[0]}_watermark_pow_{watermark_power}.png"
         # key = og_image_file[0]
         img_w,w = watermark_sample(args, caption, images[0], watermark_power)
 
