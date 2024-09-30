@@ -1,0 +1,16 @@
+datasets==2.19.2
+matplotlib==3.8.0
+numpy==1.24.4
+pandas==2.2.3
+peft==0.12.0
+Pillow==10.4.0
+scikit_commpy==0.8.0
+scikit_learn==1.5.2
+scipy
+seaborn==0.13.2
+scikit-image
+spb==0.1.1
+torch==2.3.1
+torchvision==0.18.1
+tqdm==4.66.1
+transformers==4.39.2
