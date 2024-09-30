@@ -32,58 +32,57 @@ import io
 import os
 from torch.utils.data import DataLoader, random_split, Subset, Sampler
 
-
-
-
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--watermark_encoder_model",
-    type=str,
-    default='models/Hide-R/bzhenc.pth',
-    help="Path to the watermarking encoder model.")
-parser.add_argument(
-    "--watermark_power",
-    type=float,
-    default=1.0,
-    help="Watermark power.")
-parser.add_argument(
-    "--watermark_decoder_model",
-    type=str,
-    default='models/Hide-R/bzhdec.pth',
-    help="Path to the watermarking decoder model.")
-parser.add_argument(
-    '--language_model', '-L',
-    type=str,
-    default="facebook/opt-125m",
-    help='Language model for text compression'
-)
-parser.add_argument(
-    '--key', '-k', type=int, default=42,
-    help='Watermarking key'
-)
-parser.add_argument(
-    '--modulation', '-m', default='cyclic',
-    choices = list(sorted(MODULATIONS.keys())),
-    help='Message modulation scheme'
-)
+def get_args():
 
-parser.add_argument(
-    '--image-size', '-s', type=int, default=128,
-    help='Watermark size',
-)
-parser.add_argument(
-    "--adapter_path", type= str,
-    default = None
-)
-parser.add_argument(
-    "--input_directory", "-i",default = None,type= str ,help="Directory containing the images to be watermarked.",
-)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--watermark_encoder_model",
+        type=str,
+        default='models/Hide-R/bzhenc.pth',
+        help="Path to the watermarking encoder model.")
+    parser.add_argument(
+        "--watermark_power",
+        type=float,
+        default=1.0,
+        help="Watermark power.")
+    parser.add_argument(
+        "--watermark_decoder_model",
+        type=str,
+        default='models/Hide-R/bzhdec.pth',
+        help="Path to the watermarking decoder model.")
+    parser.add_argument(
+        '--language_model', '-L',
+        type=str,
+        default="facebook/opt-125m",
+        help='Language model for text compression'
+    )
+    parser.add_argument(
+        '--key', '-k', type=int, default=42,
+        help='Watermarking key'
+    )
+    parser.add_argument(
+        '--modulation', '-m', default='cyclic',
+        choices = list(sorted(MODULATIONS.keys())),
+        help='Message modulation scheme'
+    )
+
+    parser.add_argument(
+        '--image-size', '-s', type=int, default=128,
+        help='Watermark size',
+    )
+    parser.add_argument(
+        "--adapter_path", type= str,
+        default = None
+    )
+    parser.add_argument(
+        "--input_directory", "-i",default = None,type= str ,help="Directory containing the images to be watermarked.",
+    )
 
 
-args = parser.parse_args()
-
+    args = parser.parse_args()
+    return args
 # prepare dataset
 class Transform(torch.nn.Module):
     def __init__(self, image_size, mean, std):
@@ -229,7 +228,7 @@ def watermark_sample(args, caption, image_file, watermark_power):
 
     return img_w,w
 
-def process_dataset(modulation, key, dataset = None, watermark_power = 1.0, dataloader = None,OUTPUT_DIR = "watermarked_images"):
+def process_dataset(args, dataset = None, dataloader = None, OUTPUT_DIR = "watermarked_images"):
     results_dict = {}
     c=0
     os.makedirs(f"{OUTPUT_DIR}",exist_ok=True)
@@ -238,9 +237,9 @@ def process_dataset(modulation, key, dataset = None, watermark_power = 1.0, data
         caption = dataset[str(og_image_file[0])]
         caption = caption.replace('\n', '').replace('\t', '')
         
-        image_file = f"{OUTPUT_DIR}/{og_image_file[0]}_watermark_pow_{watermark_power}.png"
+        image_file = f"{OUTPUT_DIR}/{og_image_file[0]}_watermark_pow_{args.watermark_power}.png"
         # key = og_image_file[0]
-        img_w,w = watermark_sample(args, caption, images[0], watermark_power)
+        img_w,w = watermark_sample(args, caption, images[0], args.watermark_power)
 
         if img_w is None:
             continue
@@ -252,6 +251,9 @@ def main():
     print ("Seed : ",seed)
     torch.manual_seed(seed)
     np.random.seed(seed)
+
+    args = get_args()
+
     data_path = "emu_blip2_captions_test_set_short_captions.json"
 
     if args.input_directory is None:
@@ -285,7 +287,7 @@ def main():
     captions = list(data.values())
     captions = [caption.replace('\n', '').replace('\t', '') for caption in captions]
     
-    results = process_dataset(args.modulation,int(args.key), dataset= data,watermark_power=args.watermark_power,dataloader = dataloader)
+    results = process_dataset(args, dataset= data, dataloader = dataloader)
 
 if __name__ == '__main__':
 
