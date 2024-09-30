@@ -28,23 +28,12 @@ import json
 from scipy.special import betainc, gammaincc
 from datasets import load_dataset
 from modulations import MODULATIONS
-import os
-import cProfile
-import pstats
 import io
 import os
 from torch.utils.data import DataLoader, random_split, Subset, Sampler
 
 
-os.environ['TRANSFORMERS_CACHE'] = '/home/gevennou/.cache/'
-def pfa(c, D, double=False):
-    pfa = 0.5 * betainc((D - 1) * 0.5, 0.5, 1.0 - c**2)
-    if double:
-        return 2.0 * pfa
-    else:
-        if c < 0.0:
-            pfa = 1.0 - pfa
-    return pfa
+
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -57,7 +46,7 @@ parser.add_argument(
 parser.add_argument(
     "--watermark_power",
     type=float,
-    default=1.5,
+    default=1.0,
     help="Watermark power.")
 parser.add_argument(
     "--watermark_decoder_model",
@@ -79,10 +68,7 @@ parser.add_argument(
     choices = list(sorted(MODULATIONS.keys())),
     help='Message modulation scheme'
 )
-parser.add_argument(
-    '--attack', '-a', action='store_true',
-    help='Attack the watermarked image'
-)
+
 parser.add_argument(
     '--image-size', '-s', type=int, default=128,
     help='Watermark size',
@@ -92,11 +78,9 @@ parser.add_argument(
     default = None
 )
 parser.add_argument(
-    "--input_directory", "-i",type= str ,help="Directory containing the images to be watermarked.",
+    "--input_directory", "-i",default = None,type= str ,help="Directory containing the images to be watermarked.",
 )
-parser.add_argument(
-    "--output_file","-d", type= str,
-)
+
 
 args = parser.parse_args()
 
@@ -128,8 +112,16 @@ def compute_psnr(A,B):
     size = np.prod(A.shape)
     mse = np.sum((A - B)**2) / size
     return 10*np.log10(255*255 / mse)
+    
+def pfa(c, D, double=False):
+    pfa = 0.5 * betainc((D - 1) * 0.5, 0.5, 1.0 - c**2)
+    if double:
+        return 2.0 * pfa
+    else:
+        if c < 0.0:
+            pfa = 1.0 - pfa
+    return pfa
 
-# watermarking
 def resize_and_pad_to_numpy(img, target=256):
     size = img.size
     ar = size[0] / size[1]
@@ -237,39 +229,37 @@ def watermark_sample(args, caption, image_file, watermark_power):
 
     return img_w,w
 
-def process_dataset(modulation, key, dataset = None, watermark_power = 1.0, dataloader = None):
+def process_dataset(modulation, key, dataset = None, watermark_power = 1.0, dataloader = None,OUTPUT_DIR = "watermarked_images"):
     results_dict = {}
     c=0
+    os.makedirs(f"swift/{OUTPUT_DIR}",exist_ok=True)
     for og_image_file, images in tqdm(dataloader,total=len(dataloader)):
-        c+=1 #og_image_file is the idx of emu_edit
-        # if c==2000 : break
-        print("-"*30)
-        print(og_image_file[0])
+        c+=1 
         caption = dataset[str(og_image_file[0])]
         caption = caption.replace('\n', '').replace('\t', '')
         
-        image_file = f"/home/gevennou/BIG_storage/semantic_watermarking/swift/emu_edit_test_set_watermarked_40db_key_nonconstant_orth/{og_image_file[0]}_watermark_pow_{watermark_power}.png"
-        print("index of image as key to make them turn !!! ")
-        key = og_image_file[0]
-        print(key)
+        image_file = f"swift/{OUTPUT_DIR}/{og_image_file[0]}_watermark_pow_{watermark_power}.png"
+        # key = og_image_file[0]
         img_w,w = watermark_sample(args, caption, images[0], watermark_power)
 
         if img_w is None:
             continue
         img_w.save(image_file)
-        print(f"WARNING : not saved to {image_file}")
     return results_dict
 
 def main():
     seed = 42 
+    print ("Seed : ",seed)
     torch.manual_seed(seed)
     np.random.seed(seed)
-    data_path = "/home/gevennou/clark/scripts/emu_blip2_captions_test_set_short_captions.json"
-    # data_path = "/home/gevennou/clark/scripts/coco_val2017_2k_captions.json"
+    data_path = "emu_blip2_captions_test_set_short_captions.json"
 
-    # Prepare your dataset
-    dataset = load_dataset("facebook/emu_edit_test_set_generations")
-    test_dataset = dataset["test"]
+    if args.input_directory is None:
+        print("args.input_directory is None")
+        print("using facebook/emu_edit_test_set_generations as default")
+        # Prepare your dataset
+        dataset = load_dataset("facebook/emu_edit_test_set_generations")
+        test_dataset = dataset["test"]
 
     def custom_collate_emu_batch(batch):
         # Initialize tensors lists for pixel_values, input_ids, and attention_masks
@@ -289,13 +279,13 @@ def main():
     
     dataloader = DataLoader(test_dataset, batch_size=1, collate_fn=custom_collate_emu_batch,
                     num_workers=16, pin_memory=True, drop_last=False)
-    print(len(dataloader))
+
     with open(data_path,"r") as file:
         data = json.load(file)
     captions = list(data.values())
     captions = [caption.replace('\n', '').replace('\t', '') for caption in captions]
     
-    results = process_dataset(args.modulation,int(args.key), dataset= data,watermark_power=args.watermark_power,attack=args.attack,dataloader = dataloader)
+    results = process_dataset(args.modulation,int(args.key), dataset= data,watermark_power=args.watermark_power,dataloader = dataloader)
 
 if __name__ == '__main__':
 
