@@ -29,8 +29,6 @@ class TextZipper(object):
         self.precision = PRECISION-3 # less than quarter range to allow for rounding
     
     def encode(self, bitstream, input_text, prompt="",max_length = None):
-        # print("AHAH",input_text)
-        # tokenize input
 
         if prompt:
             input_text = prompt + " " + input_text
@@ -56,7 +54,6 @@ class TextZipper(object):
             outputs = self.model.forward(input_ids, return_dict=True)
         logits = outputs['logits']
     
-        # XXX: we need this to make sure we get the exact same thing as the decoder :(
         seq_len = input_ids.shape[1]
         for i in range(prompt_end, seq_len):
             with torch.no_grad():
@@ -73,31 +70,25 @@ class TextZipper(object):
     
         # compute entropy
         pseq = probs[0, torch.arange(start=prompt_end, end=seq_len-1), input_ids[0, prompt_end+1:]]
-        #print(pseq)
-        # print("expected length = %f bits" % -pseq.log2().sum().item())
+
         bitout = arithmeticcoding.BitOutputStream(bitstream)
         ac_enc = arithmeticcoding.ArithmeticEncoder(PRECISION, bitout)
     
         seq_len = input_ids.shape[1]
         seq = input_ids[0,1:]
-        #print("precision = ", precision)
-        #print("seq_len", seq_len)
+
         H = 0.0
         for i in range(prompt_end, seq_len):
             # make a frequency table from probs
             p = probs[0,i]
-            #print("p shape", p.shape)
-            #print("total", p.sum())
             f = torch.ceil(p.float() * (2**self.precision)).long().cpu().numpy().tolist()
             freqs = arithmeticcoding.SimpleFrequencyTable(f)
-            #print("freqs", freqs)
     
             if i == seq_len-1: # last symbol is EOS
                 symbol = self.tokenizer.eos_token_id
             else:
                 symbol = int(seq[i])
             H += -torch.log2(p[symbol])
-            #print("write symbol %s with p=%s logit=%s sum=%s" % (symbol, p[symbol], logits[0,i,symbol], logits[0,i].sum()))
             ac_enc.write(freqs, symbol)
         padding = ac_enc.finish(randomize=False)
 
@@ -117,15 +108,10 @@ class TextZipper(object):
         # tokenize prompt
         inputs = self.tokenizer([ prompt ], return_tensors="pt")
         input_ids = inputs["input_ids"].to(self.model.device)
-        #print("prompt input_ids = ", input_ids)
-        
-        # generate with greedy search
-        #generated_ids = self.model.generate(inputs.input_ids, max_length=30, do_sample=False,
-        #                               logits_processor = [ ArithmeticDecoderLogitsProcessor(ac_dec)])
-    
+       
         # unroll greedy search loop ourselves
         for ip in range(max_length):
-            #print("input_ids = ", input_ids)
+
             # compute logits
             with torch.no_grad():
                 outputs = self.model.forward(input_ids, return_dict=True)
@@ -141,7 +127,6 @@ class TextZipper(object):
             # so that it gets back to sampling until it finally picks a end-of-sequence token
             symbol = ac_dec.read(freqs)
             next_tokens = torch.tensor([symbol], device=self.model.device)
-            #print("read symbol %s p=%s" % (symbol, probs[0,symbol]))
 
             # append to sequence
             input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
