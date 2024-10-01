@@ -33,6 +33,11 @@ import os
 from torch.utils.data import DataLoader, random_split, Subset, Sampler
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+transform_imnet = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5, 0.5, 0.5],std=[0.5, 0.5, 0.5])
+])
+
 
 def get_args():
 
@@ -138,13 +143,12 @@ def resize_and_pad_to_numpy(img, target=256):
     img = np.pad(img, padding, mode="reflect")
     return img, ar
 
-def embed(img, msg, power):
+def embed(args,img, msg,watermark_encoder):
     msg = msg / np.sqrt(np.dot(msg, msg))
     msg = torch.tensor(msg, dtype=torch.float32).unsqueeze(0).to(device)
 
     imgo, ar = resize_and_pad_to_numpy(img, target=args.image_size)
     imgt = transform_imnet(imgo).unsqueeze(0).to(device)
-
     with torch.no_grad():
         t0 = time.time()
         imgw = watermark_encoder(imgt, msg)
@@ -162,12 +166,12 @@ def embed(img, msg, power):
     mimg = (mimg / 255.0 - 0.5)
 
     # add to original
-    y = np.asarray(img) + mimg * power * 255.0
+    y = np.asarray(img) + mimg * args.watermark_power * 255.0
        
     imgw = Image.fromarray(y.clip(0,255.0).astype(np.uint8))
     return imgw
 
-def detect(img):
+def detect(args,img,watermark_decoder):
     # isotropic downscale
     img, ar = resize_and_pad_to_numpy(img, target=args.image_size)
     img = transform_imnet(img).unsqueeze(0).to(device)
@@ -181,54 +185,64 @@ def detect(img):
 
 convert_tensor = transforms.ToTensor()
 
-def text_encode(text):
+def text_encode(text,tz):
     # encode
     bitstream = io.BytesIO()
     H = tz.encode(bitstream, text)
     data = bitstream.getvalue()
     return data, H
 
-def text_decode(data):
+def text_decode(data,tz):
     bitstream = io.BytesIO(data)        
     # decode
     decoded_text = tz.decode(bitstream, max_length=10)
 
     return decoded_text.split("\n")[0]
 
-def watermark_sample(args, caption, image_file, watermark_power):
+ERROR = 0
+effective_im = 2022 # use for deduplication purpose
+list_error = []
+
+def watermark_sample(args, tz,key, caption, image_file, watermark_encoder,watermark_decoder):
     results = {}
     c = 0
-
+    global ERROR, list_error, effective_im
     # Compress caption with LLM
-    data, nb_bits = text_encode(caption)
+    data, nb_bits = text_encode(caption,tz)
 
     # Modulate to vector on unit hypersphere in 256D
-    modulator = MODULATIONS[args.modulation](args.key)
+    modulator = MODULATIONS[args.modulation](key)
     w = modulator.encode(data)
 
     # Open input image
     pil_image = image_file.convert('RGB')
 
     # Embed in reference
-    img_w = embed(pil_image, w, watermark_power)
+    img_w = embed(args,pil_image, w,watermark_encoder)
     #save and open back img_w
     img_w.save("watermarked_image.png")
     img_w = Image.open("watermarked_image.png")
     psnr = compute_psnr(img_w, pil_image)
     results["psnr"] = psnr
-    wr = detect(img_w)
+    wr = detect(args,img_w,watermark_decoder)
     decoded_data = modulator.decode_plain(wr)
-    text = text_decode(decoded_data)
+    text = text_decode(decoded_data,tz)
     text = ' '.join(text.split(" ")[0:-1])
     caption = ' '.join(caption.split(" ")[0:-1])
 
     if text != caption:
-        print("WRONG CAPTION")
-        print("ORIGINAL CAPTION : ",caption, "DECODED : ",text)
-
+        if caption not in list_error:
+            list_error.append(caption)
+        
+            print("WRONG CAPTION")
+            print("ORIGINAL CAPTION : ",caption, "DECODED : ",text)
+            ERROR+=1
+            print("ERROR : ",ERROR*100/effective_im)
+        else :
+            effective_im =effective_im -1 
     return img_w,w
 
-def process_dataset(args, dataset = None, dataloader = None, OUTPUT_DIR = "watermarked_images"):
+def process_dataset(args, tz, watermark_encoder, watermark_decoder, dataset = None, dataloader = None, OUTPUT_DIR = "watermarked_images"):
     results_dict = {}
     c=0
     os.makedirs(f"{OUTPUT_DIR}",exist_ok=True)
@@ -238,8 +252,8 @@ def process_dataset(args, dataset = None, dataloader = None, OUTPUT_DIR = "water
         caption = caption.replace('\n', '').replace('\t', '')
         
         image_file = f"{OUTPUT_DIR}/{og_image_file[0]}_watermark_pow_{args.watermark_power}.png"
-        # key = og_image_file[0]
-        img_w,w = watermark_sample(args, caption, images[0], args.watermark_power)
+        key = og_image_file[0]
+        img_w,w = watermark_sample(args, tz, key, caption, images[0], watermark_encoder=watermark_encoder, watermark_decoder=watermark_decoder)
 
         if img_w is None:
             continue
@@ -253,6 +267,19 @@ def main():
     np.random.seed(seed)
 
     args = get_args()
+
+    print(f'Loading watermark encoder from {args.watermark_encoder_model}...')
+    watermark_encoder = torch.jit.load(args.watermark_encoder_model).to(device)
+    watermark_encoder.eval()
+
+    print(f'Loading watermark decoder from {args.watermark_decoder_model}...')
+    watermark_decoder = torch.jit.load(args.watermark_decoder_model).to(device)
+    watermark_decoder.eval()
+
+
+    print(f'Loading LLM for text compression from {args.language_model}')
+    tz = TextZipper(modelname = args.language_model,adapter_path=args.adapter_path)
+    tz.model.to(device)
 
     data_path = "emu_blip2_captions_test_set_short_captions.json"
 
@@ -275,8 +302,6 @@ def main():
             idxs.append(sample['idx'])
             image = sample['image'].convert('RGB')
             pil_images.append(image)
-            # images.append(image)
-
         return idxs, pil_images
     
     dataloader = DataLoader(test_dataset, batch_size=1, collate_fn=custom_collate_emu_batch,
@@ -287,25 +312,7 @@ def main():
     captions = list(data.values())
     captions = [caption.replace('\n', '').replace('\t', '') for caption in captions]
     
-    results = process_dataset(args, dataset= data, dataloader = dataloader)
+    results = process_dataset(args,tz,watermark_encoder=watermark_encoder,watermark_decoder=watermark_decoder, dataset= data, dataloader = dataloader)
 
 if __name__ == '__main__':
-
-    print(f'Loading watermark encoder from {args.watermark_encoder_model}...')
-    watermark_encoder = torch.jit.load(args.watermark_encoder_model).to(device)
-    watermark_encoder.eval()
-
-    print(f'Loading watermark decoder from {args.watermark_decoder_model}...')
-    watermark_decoder = torch.jit.load(args.watermark_decoder_model).to(device)
-    watermark_decoder.eval()
-    transform_imnet = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5],std=[0.5, 0.5, 0.5])
-    ])
-
-    print(f'Loading LLM for text compression from {args.language_model}')
-    tz = TextZipper(modelname = args.language_model,adapter_path=args.adapter_path)
-    tz.model.to(device)
-
-    
     main()
