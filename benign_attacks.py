@@ -55,19 +55,8 @@ def apply_transformations(input_dir, output_dir, image_size=(128, 128), crop_siz
 if __name__ == "__main__":
 
 
-    ssl_input_directory = '/home/gevennou/BIG_storage/semantic_watermarking/ssl_watermark/imgs'
-    ssl_output_directory = '/home/gevennou/BIG_storage/semantic_watermarking/ssl_watermark/attacked_imgs'
-    # apply_transformations(ssl_input_directory, ssl_output_directory)
-    trustmark_input = "/home/gevennou/BIG_storage/semantic_watermarking/trustmark/emu_edit_test_set_watermarked_short_captions_base_model"
-    trustmark_output = "/home/gevennou/BIG_storage/semantic_watermarking/trustmark/attacked_imgs_base_model"
+    hidden_input = "watermarked_images"
+    hidden_output = "attacked_images"
 
-    hidden_input = "/home/gevennou/BIG_storage/semantic_watermarking/swift/emu_edit_test_set_watermarked_42db/"
-    hidden_input = "/home/gevennou/BIG_storage/semantic_watermarking/swift/emu_edit_test_set_watermarked_40db_key_nonconstant_orth"
-    hidden_output = "/home/gevennou/BIG_storage/semantic_watermarking/swift/attacked_imgs_40db_orth"
-
-    coco_input = "/home/gevennou/BIG_storage/semantic_watermaking/coco/val2017_2k/watermarked"
-    coco_output = "/home/gevennou/BIG_storage/semantic_watermaking/coco/val2017_2k/benign_attacks"
-    apply_transformations(coco_input, coco_output)
-    # input_directory = '/home/gevennou/BIG_storage/semantic_watermarking/emu_test_set_watermarked_fixed'
-    # output_directory = '/home/gevennou/BIG_storage/semantic_watermarking/robustness_hiddenseek_emu_test_set_watermarked_fixed'
-    # apply_transformations(input_directory, output_directory)
+    apply_transformations(hidden_input, hidden_output)
+  
