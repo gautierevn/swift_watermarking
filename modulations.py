@@ -15,14 +15,10 @@ class Modulator(object):
     # interface compatible with commpy
     def modulate(self, coded_bits):
         data = self.bvec_to_data(coded_bits)
-        #print("modulate data = ", data, len(data))
         vec = self.encode(data, bitlen=len(coded_bits))
-        #print("modulate vec[:3] = ", vec[:3], len(vec))
         return vec
 
     def demodulate(self, modulated, demod_type='hard', **kwargs):
-        #print("received real ", modulated.real[:3], len(modulated.real))
-        #print("data", data, len(data))
         
         if demod_type == 'hard':
             data = self.decode(modulated.real)
@@ -76,8 +72,6 @@ class OrthogonalModulator(Modulator):
     def gen_mod1(self, n):
         # Generate random uniform samples
         u = torch.rand(size=((n-2)//2,), dtype=self.dtype, generator = self.generator, device = self.generator.device)
-        # Compute e^(2*i*pi*u) and fill the appropriate parts in Y
-        # ~Zadoff-Chu: e^(i*pi*R*k*(k-1)/N), R prime to N
         Y = torch.zeros(n, dtype=torch.complex32 if self.dtype != torch.float32 else torch.complex64, device=self.device)
 
         c = torch.cos(2 * torch.pi * u)
@@ -113,7 +107,6 @@ class OrthogonalModulator(Modulator):
 
             basis.append(carrier)
         basis = torch.stack(basis)
-        #print("basis.shape", basis.shape)
         return basis
 
     def encode(self, data, bitlen=None):
@@ -124,31 +117,24 @@ class OrthogonalModulator(Modulator):
 
         # convert data to bitstream
         value = int.from_bytes(data, byteorder="big", signed=False)
-        #print("value=", value)
-        #print("bin = ", bin(value))
+
         bitstream = bin(value)[2:] # strip "0b"
         # 0-pad prefix
         bitstream = '0' * (8*len(data) - len(bitstream)) + bitstream
         # cut to bitlen
         bitstream = bitstream[:bitlen]
-        #print("bitstream = ", bitstream)
 
         # encode the necessary bits using the first components
         w = 0
         basis = self.basis
-        #print("bitstream = ", bitstream)
         for i, bit in enumerate(bitstream):
             carrier = basis[i]
             if bit == '1':
                 # BPSK
                 carrier = -carrier
 
-            #print("encode ", bit)
             w += carrier
-        #print("bitstream = ", bitstream)
-        #print("bitlen = ", bitlen)
-        #print("i = ", i)
-        #print("len = ", len(bitstream))
+
 
         # normalize to power 1
         w = w / torch.sqrt(torch.dot(w,w))
@@ -165,19 +151,15 @@ class OrthogonalModulator(Modulator):
         for i in range(self.L):
             # BPSK
             bit = w.dot(basis[i]) < 0
-            #print("decode ", '1' if bit else '0')
             seq.append('1' if bit else '0')
 
         # convert data to bitstream
         value = int(''.join(seq), 2)
-        #print("seq = ", seq, len(seq))
-        #print("value = %x" % value)
         data = int.to_bytes(value, self.L // 8, byteorder="big", signed=False)
-        #print("data = ", data)
         return data
 
 class CyclicModulator(Modulator):
-    def __init__(self, key, use_gpu=True, use_fp16=True, use_flip=True, use_sign=True, use_mod1=False, direct=False, M=4, N=3):
+    def __init__(self, key, use_gpu=True, use_fp16=False, use_flip=True, use_sign=True, use_mod1=False, direct=False, M=4, N=3):
         self.D = 256
         self.BITS = 8 * N - 2
         self.use_sign = use_sign
@@ -188,7 +170,7 @@ class CyclicModulator(Modulator):
             self.BITS += 1
         #self.FACTORS = [0.83767842, 0.45881537, 0.25130353, 0.13764461, 0.07539106]
         self.key = key
-        # using cupy if available to use gpu for fft
+
         self.device = torch.device("cuda" if torch.cuda.is_available() and use_gpu else "cpu")
         self.generator = torch.Generator(device=self.device)
         self.generator.manual_seed(key)
@@ -223,10 +205,8 @@ class CyclicModulator(Modulator):
             self.invnorms.append(invnorms)
 
     def gen_mod1(self, n):
-        # Generate random uniform samples
+
         u = torch.rand(size=(n//2,), dtype=self.dtype, generator = self.generator, device = self.generator.device)
-        # Compute e^(2*i*pi*u) and fill the appropriate parts in Y
-        #Y = torch.zeros(n, dtype=torch.complex32 if self.dtype != torch.float32 else torch.complex64, device=self.device)
         Y = torch.zeros(n//2+1, dtype=torch.complex64, device=self.device)
         c = torch.cos(2 * torch.pi * u)
         s = torch.sin(2 * torch.pi * u)
@@ -235,10 +215,8 @@ class CyclicModulator(Modulator):
         Y[1:n//2].real = c[:-1]
         Y[1:n//2].imag = s[:-1]
 
-        # Perform iFFT using cuFFT (cuPy)
         zp = torch.fft.irfft(Y)
 
-        # Return the real part as a NumPy array
         return zp.to(dtype=self.dtype)
 
     def gen_classical(self, n):
@@ -250,14 +228,12 @@ class CyclicModulator(Modulator):
             it = iter(iterable)
             for batch in iter(lambda: list(islice(it, batch_size)), []):
                 yield batch + [fill_value] * (batch_size - len(batch))
-        # print(len(data))
         # chunk into 24-bit sequences and convert to numbers
         self.generator.manual_seed(self.key)
         w = 0
 
         basis = []
         for i, chunk in enumerate(batched_with_padding(data, self.N, 0)):
-            # print(len(chunk))
             if i >= self.M:
                 break
             # generate carrier
@@ -265,11 +241,9 @@ class CyclicModulator(Modulator):
 
             chunk = bytes(chunk)
             value = int.from_bytes(chunk, byteorder="big", signed=self.use_sign)
-            #print("value = ", value)
 
             # negate carrier to code sign
             if value < 0:
-                #print("negate carrier to code sign")
                 carrier = -carrier
                 value = -value
                 
@@ -356,8 +330,7 @@ class CyclicModulator(Modulator):
             # Correlate
             CZ = torch.nn.functional.conv1d(S, weight)[0]
             CZ *= N
-            # print("CZ : ",CZ)
-            #print("CZ.shape=%x" % CZ.shape)
+
 
             T = 2**self.BITS
             if self.use_flip:
@@ -420,10 +393,7 @@ class CyclicModulator(Modulator):
 
             fCZ = fB * fY.conj()
             CZ = torch.fft.irfft(fCZ)
-            #print("CZ1 = ", CZ[:3])
 
-            # (a + ib)*(c+id) = ac - bd + i(bc+ad) = ac + ibc - bd + iad = c(a+ib) - d(b - i*a) = c(a+ib) + id(a + ib)
-            # (a + ib)*(c-id) = ac + bd + i(bc-ad) = ac + ibc + bd - iad = c(a+ib) + d(b - i*a) = c(a+ib) - id(a + ib)
             caib = fB * fY.real
             CAIB = torch.fft.irfft(caib)
             fY.real = 0
