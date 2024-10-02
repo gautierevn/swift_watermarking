@@ -34,15 +34,15 @@ This repository contains the implementation of SWIFT, a semantic watermarking te
 
 ### Watermarking
 
-To apply the SWIFT watermark to an image:
+To apply the SWIFT watermark the Emu Edit test set :
 
 ```bash
-./watermark.sh [options]
+./watermark.sh 
 ```
 
 For detailed usage instructions, run:
 ```bash
-./watermark.sh --help
+./watermark.sh 
 ```
 
 ### Detection
