@@ -45,7 +45,7 @@ def get_args():
     parser.add_argument(
         "--watermark_encoder_model",
         type=str,
-        default='models/Hide-R/bzhenc.pth',
+        default='models/Hide-R/encoder.pth',
         help="Path to the watermarking encoder model.")
     parser.add_argument(
         "--watermark_power",
@@ -55,7 +55,7 @@ def get_args():
     parser.add_argument(
         "--watermark_decoder_model",
         type=str,
-        default='models/Hide-R/bzhdec.pth',
+        default='models/Hide-R/decoder.pth',
         help="Path to the watermarking decoder model.")
     parser.add_argument(
         '--language_model', '-L',
