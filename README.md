@@ -19,7 +19,7 @@ This repository contains the implementation of SWIFT, a semantic watermarking te
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/swift_watermarking.git
+   git clone https://github.com/Gautier29/swift_watermarking.git
    cd swift_watermarking
    ```
 
