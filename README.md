@@ -75,7 +75,7 @@ If you use this code in your research, please cite our paper:
 ```bibtex
 @inproceedings{swift2024,
   title={SWIFT: Semantic Watermarking for Image Forgery Thwarting},
-  author={Gautier Evennou, Vivien Chappelier, Ewa Kijak and Teddy Furon},
+  author={Gautier Evennou and Vivien Chappelier and Ewa Kijak and Teddy Furon},
   booktitle={Proceedings of the IEEE International Workshop on Information Forensics and Security (WIFS)},
   year={2024}
 }
