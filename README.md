@@ -42,18 +42,13 @@ To apply the SWIFT watermark the Emu Edit test set :
 
 ### Detection
 
-To extract watermark and compare with ground truth from "emu_blip2_captions_test_set_short_captions.json":
+To extract watermark and compare with ground truth from "emu_blip2_captions_test_set_short_captions.json" run:
 
 ```bash
 ./detect.sh [options]
 ```
 
 This script can be used on both original watermarked images and potentially attacked images for further study.
-
-For detailed usage instructions, run:
-```bash
-./detect.sh --help
-```
 
 ## Project Structure
 
