@@ -40,14 +40,9 @@ To apply the SWIFT watermark the Emu Edit test set :
 ./watermark.sh 
 ```
 
-For detailed usage instructions, run:
-```bash
-./watermark.sh 
-```
-
 ### Detection
 
-To detect potential forgeries or analyze watermarked images:
+To extract watermark and compare with ground truth from "emu_blip2_captions_test_set_short_captions.json":
 
 ```bash
 ./detect.sh [options]
