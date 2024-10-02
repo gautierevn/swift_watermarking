@@ -60,12 +60,12 @@ For detailed usage instructions, run:
 
 ## Project Structure
 
-- `lattices/`: Contains checkpoint unburdening data
+- `lattices/`: Contains modulation code for comparison purpose
 - `models/`: Includes finetuned optimization models
 - `arithmeticcoding.py`: Implements arithmetic coding algorithms
 - `benign_attacks.py`: Simulates benign attacks for testing
 - `detect.py`: Core detection and MRR computation logic
-- `finetune_lim.py`: Fine-tuning utilities
+- `finetune_llm.py`: Fine-tuning utilities
 - `modulations.py`: Modulation techniques for watermarking
 - `text_zipper.py`: Text compression utilities
 - `watermark_dir.py`: Directory-based watermarking tools
@@ -76,14 +76,14 @@ This project is licensed under the BSD 3-Clause License. See the [LICENSE](LICEN
 
 ---
 
-For more information, please refer to our paper: [SWIFT: Semantic Watermarking for Image Forgery Thwarting](link-to-paper)
+For more information, please refer to our paper: [SWIFT: Semantic Watermarking for Image Forgery Thwarting](https://arxiv.org/abs/2407.18995)
 
 If you use this code in your research, please cite our paper:
 
 ```bibtex
 @inproceedings{swift2024,
   title={SWIFT: Semantic Watermarking for Image Forgery Thwarting},
-  author={Author1 and Author2 and Author3},
+  author={Gautier Evennou, Vivien Chappelier, Ewa Kijak and Teddy Furon},
   booktitle={Proceedings of the IEEE International Workshop on Information Forensics and Security (WIFS)},
   year={2024}
 }
